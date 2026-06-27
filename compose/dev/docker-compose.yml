@@ -1,0 +1,232 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json
+name: karaxys
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: karaxys-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - karaxys_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: karaxys-valkey
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - karaxys_valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: karaxys-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://127.0.0.1:19092
+    ports:
+      - "19092:19092"
+      - "9644:9644"
+    volumes:
+      - karaxys_redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 25s
+
+  redpanda-init:
+    image: redpandadata/redpanda:latest
+    container_name: karaxys-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        rpk topic create karaxys.http.conversations --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true;
+        rpk topic create karaxys.analyzer.jobs --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true;
+        rpk topic create karaxys.ingest.dead_letter --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true;
+        rpk topic create karaxys.scan.jobs --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true;
+        rpk topic list -X brokers=redpanda:9092
+
+  minio:
+    image: minio/minio:latest
+    container_name: karaxys-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-karaxys}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-karaxys-local-minio-password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - karaxys_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api-server:
+    build:
+      context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
+      dockerfile: Dockerfile.api-server
+    container_name: karaxys-api-server
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment: &karaxys_backend_env
+      KARAXYS_ENV: development
+      MONGO_URI: mongodb://mongodb:27017/?directConnection=true
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-karaxys}
+      MONGO_INDEX_TIMEOUT_SECONDS: ${MONGO_INDEX_TIMEOUT_SECONDS:-300}
+      TRAFFIC_LOG_MAX_EVENTS: ${TRAFFIC_LOG_MAX_EVENTS:-1000}
+      TRAFFIC_LOG_TTL_HOURS: ${TRAFFIC_LOG_TTL_HOURS:-24}
+      KARAXYS_API_KEY: ${KARAXYS_API_KEY:-dev-api-key-with-at-least-24-chars}
+      KARAXYS_AGENT_TOKEN: ${KARAXYS_AGENT_TOKEN:-docker-agent-token-with-at-least-24-chars}
+      KARAXYS_SECRET_KEY_B64: ${KARAXYS_SECRET_KEY_B64:-MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=}
+      KARAXYS_ALLOWED_ORIGINS: ${KARAXYS_ALLOWED_ORIGINS:-http://localhost:7000}
+      KARAXYS_MAX_WRITE_BYTES: "1048576"
+      KARAXYS_REDIS_ADDR: valkey:6379
+      KARAXYS_REDIS_DB: "0"
+      KARAXYS_REDIS_TLS: "false"
+      KARAXYS_REDIS_KEY_PREFIX: karaxys
+      KARAXYS_QUEUE_ENABLED: "true"
+      KARAXYS_QUEUE_BROKERS: redpanda:9092
+      KARAXYS_QUEUE_CLIENT_ID: karaxys
+      KARAXYS_QUEUE_CONSUMER_GROUP: karaxys-runtime-analyzer
+      KARAXYS_RUNTIME_ANALYZER_CONSUMER_GROUP: karaxys-runtime-analyzer
+      KARAXYS_DEAD_LETTER_CONSUMER_GROUP: karaxys-dead-letter-consumer
+      KARAXYS_SCANNER_WORKER_CONSUMER_GROUP: karaxys-scanner-worker
+      KARAXYS_OBJECTSTORE_BUCKET: ${KARAXYS_OBJECTSTORE_BUCKET:-karaxys-local}
+      KARAXYS_OBJECTSTORE_REGION: us-east-1
+      KARAXYS_OBJECTSTORE_ENDPOINT: http://minio:9000
+      KARAXYS_OBJECTSTORE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-karaxys}
+      KARAXYS_OBJECTSTORE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-karaxys-local-minio-password}
+      KARAXYS_OBJECTSTORE_FORCE_PATH_STYLE: "true"
+      KARAXYS_SCANNER_GLOBAL_CONCURRENCY: ${KARAXYS_SCANNER_GLOBAL_CONCURRENCY:-2}
+      KARAXYS_SCANNER_TARGET_JOBS_PER_WINDOW: ${KARAXYS_SCANNER_TARGET_JOBS_PER_WINDOW:-1}
+      KARAXYS_SCANNER_TARGET_RATE_WINDOW_SECONDS: ${KARAXYS_SCANNER_TARGET_RATE_WINDOW_SECONDS:-30}
+      KARAXYS_SCANNER_CAPACITY_RETRY_SECONDS: ${KARAXYS_SCANNER_CAPACITY_RETRY_SECONDS:-5}
+      KARAXYS_SCANNER_ADMISSION_LEASE_SECONDS: ${KARAXYS_SCANNER_ADMISSION_LEASE_SECONDS:-1800}
+      KARAXYS_NUCLEI_RATE_LIMIT_PER_SECOND: ${KARAXYS_NUCLEI_RATE_LIMIT_PER_SECOND:-5}
+      KARAXYS_NUCLEI_TEMPLATE_CONCURRENCY: ${KARAXYS_NUCLEI_TEMPLATE_CONCURRENCY:-1}
+      KARAXYS_NUCLEI_HOST_CONCURRENCY: ${KARAXYS_NUCLEI_HOST_CONCURRENCY:-1}
+      KARAXYS_NUCLEI_PAYLOAD_CONCURRENCY: ${KARAXYS_NUCLEI_PAYLOAD_CONCURRENCY:-2}
+      KARAXYS_NUCLEI_PROBE_CONCURRENCY: ${KARAXYS_NUCLEI_PROBE_CONCURRENCY:-5}
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/inventory); test \"$$code\" = \"401\" -o \"$$code\" = \"200\""]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+
+  runtime-analyzer:
+    build:
+      context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
+      dockerfile: Dockerfile.runtime-analyzer
+    container_name: karaxys-runtime-analyzer
+    restart: unless-stopped
+    depends_on:
+      api-server:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *karaxys_backend_env
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  scanner-worker:
+    build:
+      context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
+      dockerfile: Dockerfile.scanner-worker
+    container_name: karaxys-scanner-worker
+    restart: unless-stopped
+    depends_on:
+      api-server:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *karaxys_backend_env
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  dashboard:
+    build:
+      context: ${KARAXYS_DASHBOARD_CONTEXT:-../../../dashboard}
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${KARAXYS_PUBLIC_API_BASE_URL:-http://localhost:8081}
+    container_name: karaxys-dashboard
+    restart: unless-stopped
+    depends_on:
+      api-server:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${KARAXYS_PUBLIC_API_BASE_URL:-http://localhost:8081}
+    ports:
+      - "7000:7000"
+
+volumes:
+  karaxys_mongodb_data:
+  karaxys_valkey_data:
+  karaxys_redpanda_data:
+  karaxys_minio_data:
