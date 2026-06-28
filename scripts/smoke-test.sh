@@ -51,6 +51,8 @@ signup() {
   [ "${code}" = "200" ] || [ "${code}" = "201" ] || fail "signup/login failed with status ${code}: $(cat "${response_file}")"
   ACCESS_TOKEN="$(jq -r '.access_token // empty' "${response_file}")"
   [ -n "${ACCESS_TOKEN}" ] || fail "auth response did not include access_token"
+  ACCOUNT_ID="$(jq -r '.account.id // .user.account_id // empty' "${response_file}")"
+  [ -n "${ACCOUNT_ID}" ] || fail "auth response did not include account id"
   pass "auth session created"
 }
 
@@ -62,6 +64,7 @@ ingest_sample() {
 {
   "_id": {"\$oid": "${oid}"},
   "schema_version": "http.conversation.v1",
+  "tenant_id": "${ACCOUNT_ID}",
   "agent_id": "smoke-agent",
   "capture_source": "ebpf",
   "capture_mode": "container",
