@@ -64,7 +64,7 @@ ingest_sample() {
   "schema_version": "http.conversation.v1",
   "agent_id": "smoke-agent",
   "capture_source": "ebpf",
-  "capture_mode": "docker",
+  "capture_mode": "container",
   "captured_at": {"\$date": "${now}"},
   "connection": {
     "src_ip": "127.0.0.1",
