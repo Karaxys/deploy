@@ -1,0 +1,46 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: karaxys-local
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Karaxys API server
+  - job_name: karaxys-api-server
+    static_configs:
+      - targets: ["api-server:8081"]
+    metrics_path: /metrics
+
+  # Karaxys ingestor
+  - job_name: karaxys-ingestor
+    static_configs:
+      - targets: ["ingestor:8082"]
+    metrics_path: /metrics
+
+  # Karaxys runtime analyzer
+  - job_name: karaxys-runtime-analyzer
+    static_configs:
+      - targets: ["runtime-analyzer:9102"]
+    metrics_path: /metrics
+
+  # Karaxys scanner worker
+  - job_name: karaxys-scanner-worker
+    static_configs:
+      - targets: ["scanner-worker:9103"]
+    metrics_path: /metrics
+
+  # MongoDB exporter (optional — add mongo-exporter service to enable)
+  # - job_name: mongodb
+  #   static_configs:
+  #     - targets: ["mongo-exporter:9216"]
+
+  # Redpanda built-in Prometheus endpoint
+  - job_name: redpanda
+    static_configs:
+      - targets: ["redpanda:9644"]
+    metrics_path: /metrics
