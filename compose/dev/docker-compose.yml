@@ -165,7 +165,7 @@ services:
     ports:
       - "8081:8081"
     healthcheck:
-      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/inventory); test \"$$code\" = \"401\" -o \"$$code\" = \"200\""]
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-url", "http://127.0.0.1:8081/inventory", "-statuses", "200,401"]
       interval: 10s
       timeout: 5s
       retries: 18
@@ -191,7 +191,7 @@ services:
     ports:
       - "8082:8082"
     healthcheck:
-      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8082/healthz); [ \"$$code\" = \"200\" ] || [ \"$$code\" = \"404\" ]"]
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-url", "http://127.0.0.1:8082/healthz", "-statuses", "200,404"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -216,7 +216,7 @@ services:
     environment:
       <<: *backend_env
     healthcheck:
-      test: ["CMD-SHELL", "test -r /proc/1/status"]
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
       interval: 15s
       timeout: 5s
       retries: 6
@@ -239,7 +239,7 @@ services:
     environment:
       <<: *backend_env
     healthcheck:
-      test: ["CMD-SHELL", "test -r /proc/1/status"]
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
       interval: 15s
       timeout: 5s
       retries: 6
@@ -266,7 +266,7 @@ services:
     environment:
       <<: *backend_env
     healthcheck:
-      test: ["CMD-SHELL", "test -r /proc/1/status"]
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
       interval: 15s
       timeout: 5s
       retries: 6
