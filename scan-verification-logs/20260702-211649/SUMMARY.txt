@@ -1,0 +1,42 @@
+
+=== Setup ===
+api reachable
+vampi reachable
+dashboard account ready (account_id=6a4687ea4b59bd7d1dc31b6b)
+vampi users ready (alice, bob)
+
+=== Traffic generation ===
+POST /users/v1/login -> ingest 202
+GET /users/v1/_debug -> ingest 202
+GET /users/v1/alice -> ingest 202
+PUT /users/v1/alice/email -> ingest 202
+GET /books/v1 -> ingest 202
+POST /books/v1 -> ingest 202
+GET /books/v1/Karaxys%20Verify%20Book -> ingest 202
+PUT /books/v1/Karaxys%20Verify%20Book -> ingest 202
+traffic generated and ingested (8 conversations)
+
+=== Inventory ===
+inventory populated (8 endpoints)
+6a46882364bf82716de34a38	PUT	/books/v1/Karaxys Verify Book
+6a46882264bf82716de34a1c	GET	/books/v1/Karaxys Verify Book
+6a46882264bf82716de349fd	POST	/books/v1
+6a46882164bf82716de349e6	GET	/books/v1
+6a46882164bf82716de349cd	PUT	/users/v1/alice/email
+6a46881c64bf82716de349a3	GET	/users/v1/alice
+6a46881c64bf82716de3498b	GET	/users/v1/_debug
+6a46881c64bf82716de34970	POST	/users/v1/login
+
+=== Registry endpoints ===
+test-types registered: 19
+suite presets: OWASP_API_TOP_10,ACCESS_CONTROL,AUTHENTICATION,INJECTION,SSRF,MISCONFIGURATION,FULL
+
+=== Suite runs ===
+STARTED user-email-full suite=FULL suite_id=6a4688254b59bd7d1dc31b89 jobs=18 skipped=["BOLA_PARAMETER_POLLUTION"]
+RESULT  user-email-full suite=FULL suite_id=6a4688254b59bd7d1dc31b89 status_counts={"completed":17,"failed":1} findings=4
+STARTED user-detail suite=ACCESS_CONTROL suite_id=6a4688984b59bd7d1dc31bae jobs=3 skipped=["BOLA_PARAMETER_POLLUTION","MASS_ASSIGNMENT"]
+RESULT  user-detail suite=ACCESS_CONTROL suite_id=6a4688984b59bd7d1dc31bae status_counts={"completed":2,"failed":1} findings=2
+STARTED login suite=AUTHENTICATION suite_id=6a4688a44b59bd7d1dc31bb6 jobs=4 skipped=[]
+RESULT  login suite=AUTHENTICATION suite_id=6a4688a44b59bd7d1dc31bb6 status_counts={"completed":4} findings=3
+STARTED login suite=INJECTION suite_id=6a4688b34b59bd7d1dc31bbf jobs=4 skipped=[]
+RESULT  login suite=INJECTION suite_id=6a4688b34b59bd7d1dc31bbf status_counts={"completed":4} findings=0

@@ -1,0 +1,67 @@
+
+=== Setup ===
+api reachable
+vampi reachable
+dashboard account ready (account_id=6a4696aa7e207752c6a95dc1)
+vampi users ready (alice, bob)
+
+=== Traffic generation ===
+POST /users/v1/login -> ingest 202
+GET /users/v1/_debug -> ingest 202
+GET /users/v1/alice -> ingest 202
+PUT /users/v1/alice/email -> ingest 202
+GET /books/v1 -> ingest 202
+POST /books/v1 -> ingest 202
+GET /books/v1/Karaxys%20Verify%20Book -> ingest 202
+PUT /books/v1/Karaxys%20Verify%20Book -> ingest 202
+traffic generated and ingested (8 conversations)
+
+=== Inventory ===
+inventory populated (8 endpoints)
+6a4696e6a0164df50b7c9b8c	PUT	/books/v1/Karaxys Verify Book
+6a4696e5a0164df50b7c9b70	GET	/books/v1/Karaxys Verify Book
+6a4696e5a0164df50b7c9b51	POST	/books/v1
+6a4696e4a0164df50b7c9b3a	GET	/books/v1
+6a4696e3a0164df50b7c9b1e	PUT	/users/v1/alice/email
+6a4696dea0164df50b7c9af2	GET	/users/v1/alice
+6a4696dda0164df50b7c9adb	GET	/users/v1/_debug
+6a4696dda0164df50b7c9abc	POST	/users/v1/login
+
+=== Registry endpoints ===
+test-types registered: 19
+suite presets: OWASP_API_TOP_10,ACCESS_CONTROL,AUTHENTICATION,INJECTION,SSRF,MISCONFIGURATION,FULL
+
+=== Suite runs ===
+STARTED user-email-full suite=FULL suite_id=6a4696e67e207752c6a95ddf jobs=18 skipped=["BOLA_PARAMETER_POLLUTION"]
+RESULT  user-email-full suite=FULL suite_id=6a4696e67e207752c6a95ddf status_counts={"completed":18} findings=7
+STARTED user-detail suite=ACCESS_CONTROL suite_id=6a4697757e207752c6a95e04 jobs=3 skipped=["BOLA_PARAMETER_POLLUTION","MASS_ASSIGNMENT"]
+RESULT  user-detail suite=ACCESS_CONTROL suite_id=6a4697757e207752c6a95e04 status_counts={"completed":3} findings=5
+STARTED login suite=AUTHENTICATION suite_id=6a4697937e207752c6a95e0c jobs=4 skipped=[]
+RESULT  login suite=AUTHENTICATION suite_id=6a4697937e207752c6a95e0c status_counts={"completed":4} findings=3
+STARTED login suite=INJECTION suite_id=6a4697c37e207752c6a95e15 jobs=4 skipped=[]
+RESULT  login suite=INJECTION suite_id=6a4697c37e207752c6a95e15 status_counts={"completed":4} findings=0
+STARTED book-get suite=SSRF suite_id=6a4697db7e207752c6a95e1f jobs=2 skipped=[]
+RESULT  book-get suite=SSRF suite_id=6a4697db7e207752c6a95e1f status_counts={"completed":2} findings=0
+STARTED book-get suite=MISCONFIGURATION suite_id=6a4697f87e207752c6a95e25 jobs=3 skipped=[]
+RESULT  book-get suite=MISCONFIGURATION suite_id=6a4697f87e207752c6a95e25 status_counts={"completed":3} findings=1
+STARTED book-create suite=OWASP_API_TOP_10 suite_id=6a46980d7e207752c6a95e2d jobs=17 skipped=["BOLA_PARAMETER_POLLUTION"]
+RESULT  book-create suite=OWASP_API_TOP_10 suite_id=6a46980d7e207752c6a95e2d status_counts={"completed":17} findings=6
+
+=== Aggregate findings ===
+total findings recorded: 22
+findings by test_type:
+      8 BFLA
+      3 SWAGGER_CHECK
+      3 JWT_NONE_ALGO
+      3 JWT_INVALID_SIGNATURE
+      3 BOLA
+      1 BROKEN_USER_AUTH
+      1 BOLA_CHAINED_ENUMERATION
+findings by severity:
+     10 medium
+      9 high
+      3 low
+
+Full logs: /home/shion/Documents/Karaxys/deploy/scripts/../scan-verification-logs/20260702-221946
+Findings (JSONL): /home/shion/Documents/Karaxys/deploy/scripts/../scan-verification-logs/20260702-221946/findings.jsonl
+Summary: /home/shion/Documents/Karaxys/deploy/scripts/../scan-verification-logs/20260702-221946/SUMMARY.txt

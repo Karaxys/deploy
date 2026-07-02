@@ -1,0 +1,48 @@
+
+=== Setup ===
+api reachable
+vampi reachable
+dashboard account ready (account_id=6a46840b961009e919ff6446)
+vampi users ready (alice, bob)
+
+=== Traffic generation ===
+POST /users/v1/login -> ingest 202
+GET /users/v1/_debug -> ingest 202
+GET /users/v1/alice -> ingest 202
+PUT /users/v1/alice/email -> ingest 202
+GET /books/v1 -> ingest 202
+POST /books/v1 -> ingest 202
+GET /books/v1/Karaxys%20Verify%20Book -> ingest 202
+PUT /books/v1/Karaxys%20Verify%20Book -> ingest 202
+traffic generated and ingested (8 conversations)
+
+=== Inventory ===
+inventory populated (8 endpoints)
+6a46841364bf82716de34023	GET	/books/v1
+6a46841364bf82716de3400e	PUT	/users/v1/alice/email
+6a46841364bf82716de33ff7	GET	/users/v1/alice
+6a46841364bf82716de33fe0	GET	/books/v1/Karaxys Verify Book
+6a46841364bf82716de33fbd	PUT	/books/v1/Karaxys Verify Book
+6a46841364bf82716de33fa2	POST	/books/v1
+6a46841364bf82716de33f8f	GET	/users/v1/_debug
+6a46841264bf82716de33f52	POST	/users/v1/login
+
+=== Registry endpoints ===
+test-types registered: 19
+suite presets: OWASP_API_TOP_10,ACCESS_CONTROL,AUTHENTICATION,INJECTION,SSRF,MISCONFIGURATION,FULL
+
+=== Suite runs ===
+FAIL user-email-full (suite=FULL): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+FAIL user-detail (suite=ACCESS_CONTROL): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+FAIL login (suite=AUTHENTICATION): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+FAIL login (suite=INJECTION): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+FAIL book-get (suite=SSRF): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+FAIL book-get (suite=MISCONFIGURATION): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+FAIL book-create (suite=OWASP_API_TOP_10): trigger returned 400: Target blocked by scan policy: target url is invalid: could not resolve host "vampi.karaxys.local": lookup vampi.karaxys.local on 127.0.0.11:53: no such host
+
+=== Aggregate findings ===
+total findings recorded: 0
+
+Full logs: /home/shion/Documents/Karaxys/deploy/scripts/../scan-verification-logs/20260702-210018
+Findings (JSONL): /home/shion/Documents/Karaxys/deploy/scripts/../scan-verification-logs/20260702-210018/findings.jsonl
+Summary: /home/shion/Documents/Karaxys/deploy/scripts/../scan-verification-logs/20260702-210018/SUMMARY.txt

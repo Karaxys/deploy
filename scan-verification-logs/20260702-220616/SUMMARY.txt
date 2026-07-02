@@ -1,0 +1,4 @@
+
+=== Setup ===
+api reachable
+FATAL: vampi did not become reachable at http://127.0.0.1:5000

@@ -1,0 +1,8 @@
+POST /users/v1/login -> ingest 202
+GET /users/v1/_debug -> ingest 202
+GET /users/v1/alice -> ingest 202
+PUT /users/v1/alice/email -> ingest 202
+GET /books/v1 -> ingest 202
+POST /books/v1 -> ingest 202
+GET /books/v1/Karaxys%20Verify%20Book -> ingest 202
+PUT /books/v1/Karaxys%20Verify%20Book -> ingest 202

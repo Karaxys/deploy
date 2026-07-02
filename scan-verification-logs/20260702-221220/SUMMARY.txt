@@ -1,0 +1,42 @@
+
+=== Setup ===
+api reachable
+vampi reachable
+dashboard account ready (account_id=6a4694ed7e207752c6a95d63)
+vampi users ready (alice, bob)
+
+=== Traffic generation ===
+POST /users/v1/login -> ingest 202
+GET /users/v1/_debug -> ingest 202
+GET /users/v1/alice -> ingest 202
+PUT /users/v1/alice/email -> ingest 202
+GET /books/v1 -> ingest 202
+POST /books/v1 -> ingest 202
+GET /books/v1/Karaxys%20Verify%20Book -> ingest 202
+PUT /books/v1/Karaxys%20Verify%20Book -> ingest 202
+traffic generated and ingested (8 conversations)
+
+=== Inventory ===
+inventory populated (8 endpoints)
+6a46950ea0164df50b7c9346	PUT	/books/v1/Karaxys Verify Book
+6a46950da0164df50b7c9329	GET	/books/v1/Karaxys Verify Book
+6a46950ca0164df50b7c9307	POST	/books/v1
+6a469509a0164df50b7c92e3	GET	/books/v1
+6a469509a0164df50b7c92c9	PUT	/users/v1/alice/email
+6a469503a0164df50b7c92a9	GET	/users/v1/alice
+6a469503a0164df50b7c9296	GET	/users/v1/_debug
+6a469501a0164df50b7c9275	POST	/users/v1/login
+
+=== Registry endpoints ===
+test-types registered: 19
+suite presets: OWASP_API_TOP_10,ACCESS_CONTROL,AUTHENTICATION,INJECTION,SSRF,MISCONFIGURATION,FULL
+
+=== Suite runs ===
+STARTED user-email-full suite=FULL suite_id=6a4695107e207752c6a95d81 jobs=18 skipped=["BOLA_PARAMETER_POLLUTION"]
+RESULT  user-email-full suite=FULL suite_id=6a4695107e207752c6a95d81 status_counts={"completed":18} findings=7
+STARTED user-detail suite=ACCESS_CONTROL suite_id=6a4695cb7e207752c6a95da6 jobs=3 skipped=["BOLA_PARAMETER_POLLUTION","MASS_ASSIGNMENT"]
+RESULT  user-detail suite=ACCESS_CONTROL suite_id=6a4695cb7e207752c6a95da6 status_counts={"completed":3} findings=5
+STARTED login suite=AUTHENTICATION suite_id=6a4695de7e207752c6a95dae jobs=4 skipped=[]
+RESULT  login suite=AUTHENTICATION suite_id=6a4695de7e207752c6a95dae status_counts={"completed":4} findings=3
+STARTED login suite=INJECTION suite_id=6a4695f97e207752c6a95db7 jobs=4 skipped=[]
+RESULT  login suite=INJECTION suite_id=6a4695f97e207752c6a95db7 status_counts={"completed":4} findings=0
