@@ -62,13 +62,41 @@ in front of the API and dashboard.
 
 ### Publishing images
 
-CI builds and pushes images to GHCR on a version tag:
+CI builds, scans (Trivy, fails on CRITICAL/HIGH), and pushes images to GHCR.
+Trigger by pushing a version tag (`git tag v0.1.0 && git push --tags`) or
+manually (`gh workflow run "Publish Images" -R Karaxys/karaxys_backend`):
 - backend services — `karaxys_backend/.github/workflows/publish-images.yml`
 - dashboard — `dash/dashboard/.github/workflows/publish-image.yml`
 - agent binaries (GitHub Releases) — `ebpf_tracer/.github/workflows/release-agent.yml`
 
-After the first run, make each GHCR package **Public** so users can pull without
-authenticating (Package settings → Change visibility → Public).
+### Public vs. private images
+
+The source repos stay private; the **images** can be public independently
+(GHCR visibility is separate from repo visibility).
+
+**Public images (recommended — frictionless `make prod-up`).** After the first
+publish run, make each package Public. This is UI-only — GitHub has no API for
+it. For each `karaxys-*` package at
+https://github.com/orgs/Karaxys/packages → **Package settings → Danger Zone →
+Change visibility → Public**, and **Connect repository** to link it to its source.
+Verify: `docker pull ghcr.io/karaxys/karaxys-api-server:latest` should work with
+no login.
+
+**Private images (keep them locked down).** Users authenticate before pulling:
+
+- Compose — log in once, then `make prod-up`:
+  ```sh
+  echo "$GHCR_PAT" | docker login ghcr.io -u <user> --password-stdin
+  ```
+- Kubernetes — create a pull secret and reference it in the chart:
+  ```sh
+  kubectl create secret docker-registry ghcr \
+    --docker-server=ghcr.io --docker-username=<user> --docker-password=$GHCR_PAT
+  helm install karaxys deploy/charts/karaxys --set imagePullSecrets[0].name=ghcr ...
+  ```
+  (`imagePullSecrets` is already wired into every workload template.)
+
+The `GHCR_PAT` needs only `read:packages` scope.
 
 ## Kubernetes (Helm)
 
