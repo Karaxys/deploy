@@ -117,7 +117,9 @@ ingress:
 # observe. The backend URL/token are read from the same release by default.
 agent:
   enabled: false
-  image: ghcr.io/karaxys/karaxys-agent:latest
+  # Published by the ebpf_tracer CI (cmd/karaxys-capture). Override if you build
+  # the agent under a different image name.
+  image: ghcr.io/karaxys/capture:latest
   # If empty, uses the in-cluster api-server service + secrets.agentToken.
   backendUrl: ""
   token: ""
