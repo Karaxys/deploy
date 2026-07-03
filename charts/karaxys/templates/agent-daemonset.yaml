@@ -27,17 +27,14 @@ spec:
             capabilities:
               add: ["BPF", "SYS_ADMIN", "SYS_RESOURCE", "PERFMON", "NET_ADMIN"]
           env:
-            - name: KARAXYS_BACKEND_URL
-              value: {{ .Values.agent.backendUrl | default (printf "http://%s-api-server:8081" $full) | quote }}
-            - name: KARAXYS_AGENT_TOKEN
-              {{- if .Values.agent.token }}
-              value: {{ .Values.agent.token | quote }}
-              {{- else }}
+            - name: KARAXYS_INGEST_URL
+              value: {{ .Values.agent.ingestUrl | default (printf "http://%s-api-server:8081/ingest" $full) | quote }}
+            - name: KARAXYS_ACCOUNT_TOKEN
+              value: {{ required "agent.accountToken is required when agent.enabled=true — generate it in the dashboard" .Values.agent.accountToken | quote }}
+            - name: KARAXYS_NODE_NAME
               valueFrom:
-                secretKeyRef:
-                  name: {{ $full }}-secrets
-                  key: KARAXYS_AGENT_TOKEN
-              {{- end }}
+                fieldRef:
+                  fieldPath: spec.nodeName
           volumeMounts:
             - { name: sys, mountPath: /sys, readOnly: true }
             - { name: debugfs, mountPath: /sys/kernel/debug }
