@@ -1,0 +1,128 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Karaxys Helm values.
+#
+# Secrets MUST be supplied at install time — the chart refuses to render without
+# them (see templates/_helpers.tpl → karaxys.requireSecret). Generate strong
+# values and pass with --set or a private values file:
+#
+#   helm install karaxys deploy/charts/karaxys \
+#     --set secrets.secretKeyB64=$(openssl rand -base64 32) \
+#     --set secrets.apiKey=$(openssl rand -hex 24) \
+#     --set secrets.agentToken=$(openssl rand -hex 24) \
+#     --set secrets.redisPassword=$(openssl rand -hex 24) \
+#     --set secrets.mongoPassword=$(openssl rand -hex 24) \
+#     --set secrets.minioPassword=$(openssl rand -hex 24) \
+#     --set secrets.adminPassword='ChooseAStrongOne!'
+# ─────────────────────────────────────────────────────────────────────────────
+
+image:
+  registry: ghcr.io/karaxys
+  tag: latest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Deployment mode: "development" (localhost-friendly) or "production" (strict).
+karaxysEnv: production
+
+# Public URLs. In production mode these must be real, non-localhost, HTTPS URLs.
+urls:
+  # Browser-visible API base URL (dashboard calls this).
+  apiBaseUrl: https://api.karaxys.example.com
+  publicApiBaseUrl: https://api.karaxys.example.com
+  # CORS allow-list (comma-separated). Must match the dashboard origin.
+  allowedOrigins: https://karaxys.example.com
+
+# Secrets — REQUIRED. Leave empty here; supply via --set or a private values file.
+secrets:
+  secretKeyB64: ""      # base64 of exactly 32 random bytes
+  apiKey: ""            # min 24 chars
+  agentToken: ""        # min 24 chars
+  redisPassword: ""
+  mongoUsername: karaxys
+  mongoPassword: ""
+  minioUsername: karaxys
+  minioPassword: ""
+  adminEmail: admin@karaxys.local
+  adminPassword: ""     # first-run admin account
+  adminName: Karaxys Admin
+
+# Shared queue/objectstore config (non-secret).
+config:
+  mongoDbName: karaxys
+  objectstoreBucket: karaxys
+
+# ── Application services ──────────────────────────────────────────────────────
+apiServer:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: "1",  memory: 512Mi }
+ingestor:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+runtimeAnalyzer:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: "1", memory: 512Mi }
+deadLetterConsumer:
+  replicas: 1
+scannerWorker:
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits:   { cpu: "2", memory: "1Gi" }
+dashboard:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+# ── Bundled data services (single-node StatefulSets) ──────────────────────────
+# For production at scale, disable these and point at managed MongoDB / Redis /
+# Kafka / S3 via the urls + secrets above.
+mongodb:
+  enabled: true
+  image: mongo:7
+  storage: 8Gi
+valkey:
+  enabled: true
+  image: valkey/valkey:8-alpine
+  storage: 2Gi
+redpanda:
+  enabled: true
+  image: redpandadata/redpanda:v24.3.7
+  storage: 8Gi
+minio:
+  enabled: true
+  image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+  storage: 10Gi
+
+# ── Ingress (TLS via cert-manager recommended) ────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  dashboardHost: karaxys.example.com
+  apiHost: api.karaxys.example.com
+  tls: true
+  tlsSecretName: karaxys-tls
+
+# ── eBPF capture agent (DaemonSet — one sensor per node) ──────────────────────
+# The agent runs on the customer's Linux nodes. It needs elevated privileges to
+# load eBPF programs. Disabled by default; enable on clusters you want to
+# observe. The backend URL/token are read from the same release by default.
+agent:
+  enabled: false
+  image: ghcr.io/karaxys/karaxys-agent:latest
+  # If empty, uses the in-cluster api-server service + secrets.agentToken.
+  backendUrl: ""
+  token: ""
+  privileged: true          # required for eBPF (BPF + perf + kprobes)
+  hostPID: true
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }

@@ -1,0 +1,175 @@
+{{- $full := include "karaxys.fullname" . -}}
+{{- $secret := printf "%s-secrets" $full -}}
+
+{{- if .Values.mongodb.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-mongodb
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "karaxys.selector" (dict "ctx" . "component" "mongodb") | nindent 4 }}
+  ports: [{ name: mongo, port: 27017, targetPort: 27017 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $full }}-mongodb
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $full }}-mongodb
+  replicas: 1
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" . "component" "mongodb") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "mongodb") | nindent 8 }}
+    spec:
+      containers:
+        - name: mongodb
+          image: {{ .Values.mongodb.image }}
+          env:
+            - { name: MONGO_INITDB_ROOT_USERNAME, valueFrom: { secretKeyRef: { name: {{ $secret }}, key: MONGO_ROOT_USERNAME } } }
+            - { name: MONGO_INITDB_ROOT_PASSWORD, valueFrom: { secretKeyRef: { name: {{ $secret }}, key: MONGO_ROOT_PASSWORD } } }
+          ports: [{ containerPort: 27017 }]
+          volumeMounts: [{ name: data, mountPath: /data/db }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: {{ .Values.mongodb.storage }} } }
+{{- end }}
+
+{{- if .Values.valkey.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-valkey
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "karaxys.selector" (dict "ctx" . "component" "valkey") | nindent 4 }}
+  ports: [{ name: redis, port: 6379, targetPort: 6379 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $full }}-valkey
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $full }}-valkey
+  replicas: 1
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" . "component" "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "valkey") | nindent 8 }}
+    spec:
+      containers:
+        - name: valkey
+          image: {{ .Values.valkey.image }}
+          command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$KARAXYS_REDIS_PASSWORD\""]
+          env:
+            - { name: KARAXYS_REDIS_PASSWORD, valueFrom: { secretKeyRef: { name: {{ $secret }}, key: KARAXYS_REDIS_PASSWORD } } }
+          ports: [{ containerPort: 6379 }]
+          volumeMounts: [{ name: data, mountPath: /data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: {{ .Values.valkey.storage }} } }
+{{- end }}
+
+{{- if .Values.redpanda.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-redpanda
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "karaxys.selector" (dict "ctx" . "component" "redpanda") | nindent 4 }}
+  ports: [{ name: kafka, port: 9092, targetPort: 9092 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $full }}-redpanda
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $full }}-redpanda
+  replicas: 1
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" . "component" "redpanda") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "redpanda") | nindent 8 }}
+    spec:
+      containers:
+        - name: redpanda
+          image: {{ .Values.redpanda.image }}
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --memory=1G
+            - --reserve-memory=0M
+            - --overprovisioned
+            - --node-id=0
+            - --check=false
+            - --kafka-addr=internal://0.0.0.0:9092
+            - --advertise-kafka-addr=internal://{{ $full }}-redpanda:9092
+          ports: [{ containerPort: 9092 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/redpanda/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: {{ .Values.redpanda.storage }} } }
+{{- end }}
+
+{{- if .Values.minio.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-minio
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "karaxys.selector" (dict "ctx" . "component" "minio") | nindent 4 }}
+  ports: [{ name: s3, port: 9000, targetPort: 9000 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $full }}-minio
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $full }}-minio
+  replicas: 1
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" . "component" "minio") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "minio") | nindent 8 }}
+    spec:
+      containers:
+        - name: minio
+          image: {{ .Values.minio.image }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - { name: MINIO_ROOT_USER, valueFrom: { secretKeyRef: { name: {{ $secret }}, key: MINIO_ROOT_USER } } }
+            - { name: MINIO_ROOT_PASSWORD, valueFrom: { secretKeyRef: { name: {{ $secret }}, key: MINIO_ROOT_PASSWORD } } }
+          ports: [{ containerPort: 9000 }, { containerPort: 9001 }]
+          volumeMounts: [{ name: data, mountPath: /data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: {{ .Values.minio.storage }} } }
+{{- end }}

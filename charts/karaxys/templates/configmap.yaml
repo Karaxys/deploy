@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "karaxys.fullname" . }}-config
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+data:
+  KARAXYS_ENV: {{ .Values.karaxysEnv | quote }}
+  MONGO_DB_NAME: {{ .Values.config.mongoDbName | quote }}
+  KARAXYS_PUBLIC_API_BASE_URL: {{ .Values.urls.publicApiBaseUrl | quote }}
+  KARAXYS_ALLOWED_ORIGINS: {{ .Values.urls.allowedOrigins | quote }}
+  KARAXYS_MAX_WRITE_BYTES: "10485760"
+  # Redis / coordination
+  KARAXYS_REDIS_ADDR: {{ printf "%s-valkey:6379" (include "karaxys.fullname" .) | quote }}
+  KARAXYS_REDIS_DB: "0"
+  KARAXYS_REDIS_TLS: "false"
+  KARAXYS_REDIS_KEY_PREFIX: karaxys
+  # Queue (Redpanda / Kafka)
+  KARAXYS_QUEUE_ENABLED: "true"
+  KARAXYS_QUEUE_BROKERS: {{ printf "%s-redpanda:9092" (include "karaxys.fullname" .) | quote }}
+  KARAXYS_QUEUE_CLIENT_ID: karaxys
+  KARAXYS_QUEUE_CONSUMER_GROUP: karaxys-runtime-analyzer
+  KARAXYS_RUNTIME_ANALYZER_CONSUMER_GROUP: karaxys-runtime-analyzer
+  KARAXYS_DEAD_LETTER_CONSUMER_GROUP: karaxys-dead-letter-consumer
+  KARAXYS_SCANNER_WORKER_CONSUMER_GROUP: karaxys-scanner-worker
+  # Object store (MinIO / S3)
+  KARAXYS_OBJECTSTORE_BUCKET: {{ .Values.config.objectstoreBucket | quote }}
+  KARAXYS_OBJECTSTORE_REGION: us-east-1
+  KARAXYS_OBJECTSTORE_ENDPOINT: {{ printf "http://%s-minio:9000" (include "karaxys.fullname" .) | quote }}
+  KARAXYS_OBJECTSTORE_FORCE_PATH_STYLE: "true"

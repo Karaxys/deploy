@@ -1,0 +1,64 @@
+{{- $full := include "karaxys.fullname" . -}}
+{{- if .Values.redpanda.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $full }}-topic-init
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "topic-init") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topic-init
+          image: {{ .Values.redpanda.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              B={{ $full }}-redpanda:9092
+              until rpk cluster info -X brokers=$B >/dev/null 2>&1; do echo "waiting for redpanda..."; sleep 3; done
+              for t in karaxys.http.conversations karaxys.analyzer.jobs karaxys.ingest.dead_letter karaxys.scan.jobs; do
+                rpk topic create $t --partitions 3 --replicas 1 -X brokers=$B || true
+              done
+              rpk topic create karaxys.agent.metrics --partitions 1 --replicas 1 -X brokers=$B || true
+              rpk topic list -X brokers=$B
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $full }}-admin-seed
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 20
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "admin-seed") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: admin-seed
+          image: curlimages/curl:8.11.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              API="http://{{ $full }}-api-server:8081"
+              EMAIL='{{ .Values.secrets.adminEmail }}'
+              PASS='{{ include "karaxys.requireSecret" (dict "name" "adminPassword" "val" .Values.secrets.adminPassword) }}'
+              NAME='{{ .Values.secrets.adminName }}'
+              until curl -sf -o /dev/null "$API/inventory" -w '%{http_code}' | grep -qE '200|401'; do echo "waiting for api-server..."; sleep 3; done
+              code=$(curl -s -o /tmp/r.json -w '%{http_code}' -X POST "$API/auth/signup" \
+                -H 'Content-Type: application/json' \
+                -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"name\":\"$NAME\"}")
+              if [ "$code" = "201" ]; then echo "admin created: $EMAIL";
+              elif [ "$code" = "409" ]; then echo "admin already exists — skipping";
+              else echo "unexpected HTTP $code:"; cat /tmp/r.json; exit 1; fi

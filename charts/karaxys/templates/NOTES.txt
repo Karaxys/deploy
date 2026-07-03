@@ -1,0 +1,24 @@
+Karaxys has been installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Components:
+  api-server, ingestor, runtime-analyzer, dead-letter-consumer, scanner-worker, dashboard
+{{- if .Values.mongodb.enabled }} + bundled MongoDB{{- end }}{{- if .Values.valkey.enabled }} + Valkey{{- end }}{{- if .Values.redpanda.enabled }} + Redpanda{{- end }}{{- if .Values.minio.enabled }} + MinIO{{- end }}
+
+Admin account: {{ .Values.secrets.adminEmail }} (password: the value you set for secrets.adminPassword)
+
+{{ if .Values.ingress.enabled -}}
+Access:
+  Dashboard: https://{{ .Values.ingress.dashboardHost }}
+  API:       https://{{ .Values.ingress.apiHost }}
+{{- else -}}
+Ingress is disabled. Port-forward to reach the dashboard:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "karaxys.fullname" . }}-dashboard 7000:7000
+  open http://localhost:7000
+{{- end }}
+
+{{ if not .Values.agent.enabled -}}
+The eBPF capture agent is disabled. Enable it on clusters you want to observe:
+  helm upgrade {{ .Release.Name }} deploy/charts/karaxys --reuse-values --set agent.enabled=true
+{{- end }}
+
+Check status:  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}

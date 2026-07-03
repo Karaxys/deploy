@@ -1,0 +1,32 @@
+{{- /* Stateless queue consumers — no Service, scale via replicas. */ -}}
+{{- range $c := list
+  (dict "name" "runtime-analyzer"     "svc" "runtime-analyzer"     "vals" $.Values.runtimeAnalyzer)
+  (dict "name" "dead-letter-consumer" "svc" "dead-letter-consumer" "vals" $.Values.deadLetterConsumer)
+  (dict "name" "scanner-worker"       "svc" "scanner-worker"       "vals" $.Values.scannerWorker)
+}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "karaxys.fullname" $ }}-{{ $c.name }}
+  labels: {{- include "karaxys.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ default 1 $c.vals.replicas }}
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" $ "component" $c.name) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" $ "component" $c.name) | nindent 8 }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $c.name }}
+          image: {{ include "karaxys.image" (dict "ctx" $ "svc" $c.svc) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          envFrom: {{- include "karaxys.backendEnvFrom" $ | nindent 12 }}
+          {{- with $c.vals.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

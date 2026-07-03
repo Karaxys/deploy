@@ -1,0 +1,15 @@
+apiVersion: v2
+name: karaxys
+description: Karaxys — real-time API security & runtime observability platform (self-hosted)
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - api-security
+  - ebpf
+  - observability
+home: https://github.com/karaxys
+sources:
+  - https://github.com/karaxys
+maintainers:
+  - name: Karaxys

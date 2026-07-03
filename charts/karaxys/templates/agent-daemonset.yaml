@@ -1,0 +1,50 @@
+{{- if .Values.agent.enabled }}
+{{- $full := include "karaxys.fullname" . -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $full }}-agent
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" . "component" "agent") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "agent") | nindent 8 }}
+    spec:
+      # eBPF needs to see host processes and the host network namespace.
+      hostPID: {{ .Values.agent.hostPID }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent
+          image: {{ .Values.agent.image }}
+          securityContext:
+            privileged: {{ .Values.agent.privileged }}
+            capabilities:
+              add: ["BPF", "SYS_ADMIN", "SYS_RESOURCE", "PERFMON", "NET_ADMIN"]
+          env:
+            - name: KARAXYS_BACKEND_URL
+              value: {{ .Values.agent.backendUrl | default (printf "http://%s-api-server:8081" $full) | quote }}
+            - name: KARAXYS_AGENT_TOKEN
+              {{- if .Values.agent.token }}
+              value: {{ .Values.agent.token | quote }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $full }}-secrets
+                  key: KARAXYS_AGENT_TOKEN
+              {{- end }}
+          volumeMounts:
+            - { name: sys, mountPath: /sys, readOnly: true }
+            - { name: debugfs, mountPath: /sys/kernel/debug }
+          resources: {{- toYaml .Values.agent.resources | nindent 12 }}
+      volumes:
+        - { name: sys, hostPath: { path: /sys } }
+        - { name: debugfs, hostPath: { path: /sys/kernel/debug } }
+      tolerations:
+        - operator: Exists   # run on every node, including tainted/control-plane
+{{- end }}

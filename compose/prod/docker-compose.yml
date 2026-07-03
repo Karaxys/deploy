@@ -1,0 +1,341 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json
+name: karaxys
+#
+# Karaxys self-host / production stack — runs entirely from published images.
+# Nothing here builds from source, so this file + .env is all an operator needs.
+#
+#   ./scripts/generate-secrets.sh      # creates .env with unique secrets
+#   docker compose --env-file .env -f compose/prod/docker-compose.yml up -d
+#
+# Security posture:
+#   * Every secret is a REQUIRED variable (${VAR:?...}) — the stack refuses to
+#     start until .env provides one. There are no baked-in default credentials.
+#   * Only api-server (8081) and dashboard (7000) publish host ports. MongoDB,
+#     Valkey, Redpanda and MinIO are reachable only on the internal network.
+
+# ── Shared backend environment ────────────────────────────────────────────────
+x-backend-env: &backend_env
+  KARAXYS_ENV: ${KARAXYS_ENV:-development}
+  MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?set MONGO_ROOT_USERNAME in .env}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}@mongodb:27017/?directConnection=true&authSource=admin
+  MONGO_DB_NAME: ${MONGO_DB_NAME:-karaxys}
+  MONGO_INDEX_TIMEOUT_SECONDS: ${MONGO_INDEX_TIMEOUT_SECONDS:-300}
+  TRAFFIC_LOG_MAX_EVENTS: ${TRAFFIC_LOG_MAX_EVENTS:-1000}
+  TRAFFIC_LOG_TTL_HOURS: ${TRAFFIC_LOG_TTL_HOURS:-24}
+  KARAXYS_API_KEY: ${KARAXYS_API_KEY:?set KARAXYS_API_KEY in .env (min 24 chars)}
+  KARAXYS_AGENT_TOKEN: ${KARAXYS_AGENT_TOKEN:?set KARAXYS_AGENT_TOKEN in .env (min 24 chars)}
+  KARAXYS_SECRET_KEY_B64: ${KARAXYS_SECRET_KEY_B64:?set KARAXYS_SECRET_KEY_B64 in .env (base64 of 32 bytes)}
+  KARAXYS_PUBLIC_API_BASE_URL: ${KARAXYS_PUBLIC_API_BASE_URL:-http://localhost:8081}
+  KARAXYS_ALLOWED_ORIGINS: ${KARAXYS_ALLOWED_ORIGINS:-http://localhost:7000}
+  KARAXYS_MAX_WRITE_BYTES: "10485760"
+  KARAXYS_REDIS_ADDR: valkey:6379
+  KARAXYS_REDIS_PASSWORD: ${KARAXYS_REDIS_PASSWORD:?set KARAXYS_REDIS_PASSWORD in .env}
+  KARAXYS_REDIS_DB: "0"
+  KARAXYS_REDIS_TLS: "false"
+  KARAXYS_REDIS_KEY_PREFIX: karaxys
+  KARAXYS_QUEUE_ENABLED: "true"
+  KARAXYS_QUEUE_BROKERS: redpanda:9092
+  KARAXYS_QUEUE_CLIENT_ID: karaxys
+  KARAXYS_QUEUE_CONSUMER_GROUP: karaxys-runtime-analyzer
+  KARAXYS_RUNTIME_ANALYZER_CONSUMER_GROUP: karaxys-runtime-analyzer
+  KARAXYS_DEAD_LETTER_CONSUMER_GROUP: karaxys-dead-letter-consumer
+  KARAXYS_SCANNER_WORKER_CONSUMER_GROUP: karaxys-scanner-worker
+  KARAXYS_OBJECTSTORE_BUCKET: ${KARAXYS_OBJECTSTORE_BUCKET:-karaxys}
+  KARAXYS_OBJECTSTORE_REGION: us-east-1
+  KARAXYS_OBJECTSTORE_ENDPOINT: http://minio:9000
+  KARAXYS_OBJECTSTORE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+  KARAXYS_OBJECTSTORE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+  KARAXYS_OBJECTSTORE_FORCE_PATH_STYLE: "true"
+  KARAXYS_SCANNER_GLOBAL_CONCURRENCY: ${KARAXYS_SCANNER_GLOBAL_CONCURRENCY:-2}
+  KARAXYS_SCANNER_TARGET_JOBS_PER_WINDOW: ${KARAXYS_SCANNER_TARGET_JOBS_PER_WINDOW:-1}
+  KARAXYS_SCANNER_TARGET_RATE_WINDOW_SECONDS: ${KARAXYS_SCANNER_TARGET_RATE_WINDOW_SECONDS:-30}
+  KARAXYS_SCANNER_CAPACITY_RETRY_SECONDS: ${KARAXYS_SCANNER_CAPACITY_RETRY_SECONDS:-5}
+  KARAXYS_SCANNER_ADMISSION_LEASE_SECONDS: ${KARAXYS_SCANNER_ADMISSION_LEASE_SECONDS:-1800}
+  KARAXYS_NUCLEI_RATE_LIMIT_PER_SECOND: ${KARAXYS_NUCLEI_RATE_LIMIT_PER_SECOND:-5}
+  KARAXYS_NUCLEI_TEMPLATE_CONCURRENCY: ${KARAXYS_NUCLEI_TEMPLATE_CONCURRENCY:-1}
+  KARAXYS_NUCLEI_HOST_CONCURRENCY: ${KARAXYS_NUCLEI_HOST_CONCURRENCY:-1}
+  KARAXYS_NUCLEI_PAYLOAD_CONCURRENCY: ${KARAXYS_NUCLEI_PAYLOAD_CONCURRENCY:-2}
+  KARAXYS_NUCLEI_PROBE_CONCURRENCY: ${KARAXYS_NUCLEI_PROBE_CONCURRENCY:-5}
+
+x-image-defaults: &registry ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}
+
+services:
+  # ── Infrastructure (internal network only — no host ports) ────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: karaxys-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set MONGO_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - karaxys_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh \"mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@localhost:27017/admin\" --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: karaxys-valkey
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes", "--requirepass", "${KARAXYS_REDIS_PASSWORD:?set KARAXYS_REDIS_PASSWORD in .env}"]
+    environment:
+      REDISCLI_AUTH: ${KARAXYS_REDIS_PASSWORD}
+    volumes:
+      - karaxys_valkey_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redpanda:
+    image: redpandadata/redpanda:v24.3.7
+    container_name: karaxys-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+    volumes:
+      - karaxys_redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 25s
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.3.7
+    container_name: karaxys-redpanda-init
+    restart: "no"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        rpk topic create karaxys.http.conversations --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.analyzer.jobs      --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.ingest.dead_letter --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.scan.jobs          --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agent.metrics      --partitions 1 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic list -X brokers=redpanda:9092
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: karaxys-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - karaxys_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # ── Application services (published images) ───────────────────────────────────
+  api-server:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-api-server:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-api-server
+    restart: unless-stopped
+    depends_on:
+      mongodb: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+      minio: {condition: service_healthy}
+    environment:
+      <<: *backend_env
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-url", "http://127.0.0.1:8081/inventory", "-statuses", "200,401"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 25s
+
+  ingestor:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-ingestor:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-ingestor
+    restart: unless-stopped
+    depends_on:
+      mongodb: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      <<: *backend_env
+      KARAXYS_INGESTOR_ADDR: :8082
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-url", "http://127.0.0.1:8082/healthz", "-statuses", "200,404"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  runtime-analyzer:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-runtime-analyzer:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-runtime-analyzer
+    restart: unless-stopped
+    depends_on:
+      api-server: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      <<: *backend_env
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  dead-letter-consumer:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-dead-letter-consumer:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-dead-letter-consumer
+    restart: unless-stopped
+    depends_on:
+      mongodb: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      <<: *backend_env
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  scanner-worker:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-scanner-worker:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-scanner-worker
+    restart: unless-stopped
+    depends_on:
+      api-server: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      <<: *backend_env
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  dashboard:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-dashboard:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-dashboard
+    restart: unless-stopped
+    depends_on:
+      api-server:
+        condition: service_healthy
+    environment:
+      # Runtime API URL — resolved by the browser at request time (no rebuild needed).
+      KARAXYS_API_BASE_URL: ${KARAXYS_API_BASE_URL:-http://localhost:8081}
+    ports:
+      - "7000:7000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7000/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  # ── Init: creates the first admin account (requires a real password) ──────────
+  admin-seed:
+    image: curlimages/curl:8.11.1
+    container_name: karaxys-admin-seed
+    restart: "no"
+    depends_on:
+      api-server:
+        condition: service_healthy
+    environment:
+      API: http://api-server:8081
+      EMAIL: ${KARAXYS_ADMIN_EMAIL:-admin@karaxys.local}
+      PASS: ${KARAXYS_ADMIN_PASSWORD:?set KARAXYS_ADMIN_PASSWORD in .env}
+      NAME: ${KARAXYS_ADMIN_NAME:-Karaxys Admin}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        code=$$(curl -sf -o /tmp/r.json -w '%{http_code}' \
+          -X POST "$$API/auth/signup" \
+          -H 'Content-Type: application/json' \
+          -d "{\"email\":\"$$EMAIL\",\"password\":\"$$PASS\",\"name\":\"$$NAME\"}")
+        if [ "$$code" = "201" ]; then
+          echo "[seed] admin account created: $$EMAIL"
+        elif [ "$$code" = "409" ]; then
+          echo "[seed] admin account already exists — skipping"
+        else
+          echo "[seed] unexpected HTTP $$code:" && cat /tmp/r.json && exit 1
+        fi
+
+  # ── Optional: monitoring   →   docker compose --profile monitoring up ─────────
+  prometheus:
+    image: prom/prometheus:v3.3.1
+    container_name: karaxys-prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - karaxys_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/healthy >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:12.0.1
+    container_name: karaxys-grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - karaxys_grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_HTTP_PORT: "3001"
+    ports:
+      - "3001:3001"
+
+volumes:
+  karaxys_mongodb_data:
+  karaxys_valkey_data:
+  karaxys_redpanda_data:
+  karaxys_minio_data:
+  karaxys_prometheus_data:
+  karaxys_grafana_data:
