@@ -167,6 +167,16 @@ JSON
   [ "${code}" = "202" ] || fail "agentic event post failed with status ${code}: $(cat "${tmp_dir}/agentic-events.out")"
   pass "agentic event accepted"
 
+  # Synchronous guardrail: a destructive command must be blocked by the built-in
+  # rules (no ML required).
+  guard_resp="$(curl -s -X POST "${AGENTIC_BASE_URL}/v1/agentic/guardrail" \
+    -H "Authorization: Bearer ${SHIELD_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"event_id\":\"gr-${ts}\",\"event_type\":\"pre_tool_use\",\"session_id\":\"${session_id}\",\"connector\":\"claude_code_cli\",\"tool_name\":\"bash\",\"tool_input\":{\"command\":\"rm -rf /\"}}")"
+  allowed="$(printf '%s' "${guard_resp}" | jq -r '.data.guardrailsResult.Allowed')"
+  [ "${allowed}" = "false" ] || fail "guardrail did not block a destructive command: ${guard_resp}"
+  pass "guardrail blocked destructive command"
+
   # The processor should promote the event into a session.
   for _ in $(seq 1 60); do
     response="$(curl -s "${API_BASE_URL}/v1/agentic/sessions?limit=100" -H "Authorization: Bearer ${ACCESS_TOKEN}")"
