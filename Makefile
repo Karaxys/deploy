@@ -55,7 +55,7 @@ smoke:
 # ── Production / self-host (published images, no source needed) ───────────────
 # First run:  make init && make prod-up
 init:
-	./scripts/generate-secrets.sh --env-file $(PROD_ENV_FILE)
+	bash ./scripts/generate-secrets.sh --env-file $(PROD_ENV_FILE)
 
 prod-up:
 	@test -f $(PROD_ENV_FILE) || { echo "No $(PROD_ENV_FILE) — run 'make init' first."; exit 1; }
