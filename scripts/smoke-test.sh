@@ -177,6 +177,17 @@ JSON
   [ "${allowed}" = "false" ] || fail "guardrail did not block a destructive command: ${guard_resp}"
   pass "guardrail blocked destructive command"
 
+  # The blocked call is mirrored and enriched into a finding.
+  for _ in $(seq 1 30); do
+    findings="$(curl -s "${API_BASE_URL}/v1/agentic/findings?limit=50" -H "Authorization: Bearer ${ACCESS_TOKEN}")"
+    if printf '%s' "${findings}" | jq -e '.data[]? | select(.type == "BLOCKED_TOOL")' >/dev/null 2>&1; then
+      pass "agentic finding recorded"
+      return
+    fi
+    sleep 1
+  done
+  fail "blocked call did not produce a finding within 30 seconds"
+
   # The processor should promote the event into a session.
   for _ in $(seq 1 60); do
     response="$(curl -s "${API_BASE_URL}/v1/agentic/sessions?limit=100" -H "Authorization: Bearer ${ACCESS_TOKEN}")"
