@@ -26,6 +26,7 @@ x-backend-env: &backend_env
   KARAXYS_SECRET_KEY_B64: ${KARAXYS_SECRET_KEY_B64:?set KARAXYS_SECRET_KEY_B64 in .env (base64 of 32 bytes)}
   KARAXYS_PUBLIC_API_BASE_URL: ${KARAXYS_PUBLIC_API_BASE_URL:-http://localhost:8081}
   KARAXYS_ALLOWED_ORIGINS: ${KARAXYS_ALLOWED_ORIGINS:-http://localhost:7000}
+  KARAXYS_AGENTIC_EVENTS_URL: ${KARAXYS_AGENTIC_EVENTS_URL:-http://localhost:8083/v1/agentic/events}
   KARAXYS_MAX_WRITE_BYTES: "10485760"
   KARAXYS_REDIS_ADDR: valkey:6379
   KARAXYS_REDIS_PASSWORD: ${KARAXYS_REDIS_PASSWORD:?set KARAXYS_REDIS_PASSWORD in .env}
@@ -132,6 +133,8 @@ services:
         rpk topic create karaxys.ingest.dead_letter --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic create karaxys.scan.jobs          --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic create karaxys.agent.metrics      --partitions 1 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agentic.events.v1              --partitions 6 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agentic.events.dead_letter.v1 --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic list -X brokers=redpanda:9092
 
   minio:
@@ -212,6 +215,43 @@ services:
   dead-letter-consumer:
     image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-dead-letter-consumer:${KARAXYS_IMAGE_TAG:-latest}
     container_name: karaxys-dead-letter-consumer
+    restart: unless-stopped
+    depends_on:
+      mongodb: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      <<: *backend_env
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  agentic-gateway:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-agentic-gateway:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-agentic-gateway
+    restart: unless-stopped
+    depends_on:
+      mongodb: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+      redpanda-init: {condition: service_completed_successfully}
+    environment:
+      <<: *backend_env
+      KARAXYS_AGENTIC_GATEWAY_ADDR: :8083
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-url", "http://127.0.0.1:8083/healthz", "-statuses", "200"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  agentic-processor:
+    image: ${KARAXYS_IMAGE_REGISTRY:-ghcr.io/karaxys}/karaxys-agentic-processor:${KARAXYS_IMAGE_TAG:-latest}
+    container_name: karaxys-agentic-processor
     restart: unless-stopped
     depends_on:
       mongodb: {condition: service_healthy}

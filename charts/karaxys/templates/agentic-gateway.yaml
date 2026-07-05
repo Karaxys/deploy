@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "karaxys.fullname" . }}-agentic-gateway
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.agenticGateway.replicas }}
+  selector:
+    matchLabels: {{- include "karaxys.selector" (dict "ctx" . "component" "agentic-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "karaxys.selector" (dict "ctx" . "component" "agentic-gateway") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agentic-gateway
+          image: {{ include "karaxys.image" (dict "ctx" . "svc" "agentic-gateway") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom: {{- include "karaxys.backendEnvFrom" . | nindent 12 }}
+          env:
+            - name: KARAXYS_AGENTIC_GATEWAY_ADDR
+              value: ":8083"
+          ports:
+            - containerPort: 8083
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8083 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources: {{- toYaml .Values.agenticGateway.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "karaxys.fullname" . }}-agentic-gateway
+  labels: {{- include "karaxys.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "karaxys.selector" (dict "ctx" . "component" "agentic-gateway") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083

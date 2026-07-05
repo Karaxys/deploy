@@ -2,6 +2,7 @@
 set -euo pipefail
 
 API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:8081}"
+AGENTIC_BASE_URL="${AGENTIC_BASE_URL:-http://127.0.0.1:8083}"
 AGENT_TOKEN="${KARAXYS_AGENT_TOKEN:-docker-agent-token-with-at-least-24-chars}"
 EMAIL="${KARAXYS_SMOKE_EMAIL:-smoke+$(date +%s)@karaxys.local}"
 PASSWORD="${KARAXYS_SMOKE_PASSWORD:-change-me-now-123}"
@@ -134,11 +135,56 @@ wait_for_inventory() {
   fail "inventory did not populate within 60 seconds"
 }
 
+agentic_event_flow() {
+  # Mint the shield token (same account-scoped token used for traffic ingest).
+  token_file="${tmp_dir}/shield-token.json"
+  code="$(curl -s -o "${token_file}" -w '%{http_code}' -X POST "${API_BASE_URL}/v1/agentic/shield-token" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}")"
+  [ "${code}" = "200" ] || fail "shield-token request failed with status ${code}: $(cat "${token_file}")"
+  SHIELD_TOKEN="$(jq -r '.token // empty' "${token_file}")"
+  [ -n "${SHIELD_TOKEN}" ] || fail "shield-token response did not include a token"
+  pass "shield token issued"
+
+  # Post a lifecycle event to the gateway.
+  ts="$(date +%s)"
+  session_id="smoke-sess-${ts}"
+  event="${tmp_dir}/agentic-event.json"
+  cat >"${event}" <<JSON
+{
+  "event_id": "smoke-evt-${ts}",
+  "event_type": "pre_tool_use",
+  "session_id": "${session_id}",
+  "machine_id": "smoke-machine",
+  "connector": "claude_code_cli",
+  "tool_name": "bash",
+  "tool_input": {"command": "echo hello"}
+}
+JSON
+  code="$(curl -s -o "${tmp_dir}/agentic-events.out" -w '%{http_code}' -X POST "${AGENTIC_BASE_URL}/v1/agentic/events" \
+    -H "Authorization: Bearer ${SHIELD_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data-binary "@${event}")"
+  [ "${code}" = "202" ] || fail "agentic event post failed with status ${code}: $(cat "${tmp_dir}/agentic-events.out")"
+  pass "agentic event accepted"
+
+  # The processor should promote the event into a session.
+  for _ in $(seq 1 60); do
+    response="$(curl -s "${API_BASE_URL}/v1/agentic/sessions?limit=100" -H "Authorization: Bearer ${ACCESS_TOKEN}")"
+    if printf '%s' "${response}" | jq -e --arg s "${session_id}" '.data[]? | select(.session_id == $s)' >/dev/null 2>&1; then
+      pass "agentic session recorded"
+      return
+    fi
+    sleep 1
+  done
+  fail "agentic session did not appear within 60 seconds"
+}
+
 main() {
   wait_for_api
   signup
   ingest_sample
   wait_for_inventory
+  agentic_event_flow
   pass "karaxys deployment smoke test completed"
 }
 

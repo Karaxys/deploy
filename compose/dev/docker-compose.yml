@@ -119,6 +119,8 @@ services:
         rpk topic create karaxys.ingest.dead_letter --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic create karaxys.scan.jobs          --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic create karaxys.agent.metrics      --partitions 1 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agentic.events.v1              --partitions 6 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agentic.events.dead_letter.v1 --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic list -X brokers=redpanda:9092
 
   minio:
@@ -228,6 +230,55 @@ services:
       dockerfile: Dockerfile.dead-letter-consumer
     image: karaxys/dead-letter-consumer:local
     container_name: karaxys-dead-letter-consumer
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend_env
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  agentic-gateway:
+    build:
+      context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
+      dockerfile: Dockerfile.agentic-gateway
+    image: karaxys/agentic-gateway:local
+    container_name: karaxys-agentic-gateway
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend_env
+      KARAXYS_AGENTIC_GATEWAY_ADDR: :8083
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-url", "http://127.0.0.1:8083/healthz", "-statuses", "200"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  agentic-processor:
+    build:
+      context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
+      dockerfile: Dockerfile.agentic-processor
+    image: karaxys/agentic-processor:local
+    container_name: karaxys-agentic-processor
     restart: unless-stopped
     depends_on:
       mongodb:

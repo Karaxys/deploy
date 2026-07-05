@@ -27,6 +27,8 @@ spec:
                 rpk topic create $t --partitions 3 --replicas 1 -X brokers=$B || true
               done
               rpk topic create karaxys.agent.metrics --partitions 1 --replicas 1 -X brokers=$B || true
+              rpk topic create karaxys.agentic.events.v1 --partitions 6 --replicas 1 -X brokers=$B || true
+              rpk topic create karaxys.agentic.events.dead_letter.v1 --partitions 3 --replicas 1 -X brokers=$B || true
               rpk topic list -X brokers=$B
 {{- end }}
 ---

@@ -3,6 +3,7 @@
   (dict "name" "runtime-analyzer"     "svc" "runtime-analyzer"     "vals" $.Values.runtimeAnalyzer)
   (dict "name" "dead-letter-consumer" "svc" "dead-letter-consumer" "vals" $.Values.deadLetterConsumer)
   (dict "name" "scanner-worker"       "svc" "scanner-worker"       "vals" $.Values.scannerWorker)
+  (dict "name" "agentic-processor"    "svc" "agentic-processor"    "vals" $.Values.agenticProcessor)
 }}
 ---
 apiVersion: apps/v1
