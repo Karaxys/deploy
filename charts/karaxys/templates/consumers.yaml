@@ -4,6 +4,7 @@
   (dict "name" "dead-letter-consumer" "svc" "dead-letter-consumer" "vals" $.Values.deadLetterConsumer)
   (dict "name" "scanner-worker"       "svc" "scanner-worker"       "vals" $.Values.scannerWorker)
   (dict "name" "agentic-processor"    "svc" "agentic-processor"    "vals" $.Values.agenticProcessor)
+  (dict "name" "agentic-redteam-worker" "svc" "agentic-redteam-worker" "vals" $.Values.agenticRedteamWorker)
 }}
 ---
 apiVersion: apps/v1

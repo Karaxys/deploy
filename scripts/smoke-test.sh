@@ -200,12 +200,36 @@ JSON
   fail "agentic session did not appear within 60 seconds"
 }
 
+redteam_scan_flow() {
+  # Enqueue an offensive scan and confirm it is accepted and recorded.
+  scan_out="${tmp_dir}/redteam-scan.json"
+  code="$(curl -s -o "${scan_out}" -w '%{http_code}' -X POST "${API_BASE_URL}/v1/agentic/redteam/scan" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" -H 'Content-Type: application/json' \
+    -d '{"target":{"kind":"llm_app","url":"http://target.invalid/prompt"}}')"
+  [ "${code}" = "202" ] || fail "red-team scan enqueue failed with status ${code}: $(cat "${scan_out}")"
+  job_id="$(jq -r '.data.job_id' "${scan_out}")"
+  [ -n "${job_id}" ] && [ "${job_id}" != "null" ] || fail "red-team scan did not return a job id"
+  pass "red-team scan queued (job ${job_id})"
+
+  # The job must surface in the account's job list.
+  for _ in $(seq 1 30); do
+    jobs="$(curl -s "${API_BASE_URL}/v1/agentic/redteam/jobs?limit=50" -H "Authorization: Bearer ${ACCESS_TOKEN}")"
+    if printf '%s' "${jobs}" | jq -e --arg j "${job_id}" '.data[]? | select(.id == $j)' >/dev/null 2>&1; then
+      pass "red-team job recorded"
+      return
+    fi
+    sleep 1
+  done
+  fail "red-team job did not appear within 30 seconds"
+}
+
 main() {
   wait_for_api
   signup
   ingest_sample
   wait_for_inventory
   agentic_event_flow
+  redteam_scan_flow
   pass "karaxys deployment smoke test completed"
 }
 

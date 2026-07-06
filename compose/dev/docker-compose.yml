@@ -121,6 +121,8 @@ services:
         rpk topic create karaxys.agent.metrics      --partitions 1 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic create karaxys.agentic.events.v1              --partitions 6 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic create karaxys.agentic.events.dead_letter.v1 --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agentic.redteam.jobs.v1        --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
+        rpk topic create karaxys.agentic.redteam.dead_letter.v1 --partitions 3 --replicas 1 -X brokers=redpanda:9092 || true
         rpk topic list -X brokers=redpanda:9092
 
   minio:
@@ -279,6 +281,29 @@ services:
       dockerfile: Dockerfile.agentic-processor
     image: karaxys/agentic-processor:local
     container_name: karaxys-agentic-processor
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend_env
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/karaxys-healthcheck", "-proc", "/proc/1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  agentic-redteam-worker:
+    build:
+      context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
+      dockerfile: Dockerfile.agentic-redteam-worker
+    image: karaxys/agentic-redteam-worker:local
+    container_name: karaxys-agentic-redteam-worker
     restart: unless-stopped
     depends_on:
       mongodb:
