@@ -1,6 +1,13 @@
 COMPOSE_FILE ?= compose/dev/docker-compose.yml
 ENV_FILE     ?= .env
 
+# Build with BuildKit + Compose Bake: every Go service shares one Dockerfile with
+# a single `build` stage, so the dependency compile runs once for all of them and
+# the per-service images build in parallel — the boot-from-source path is
+# dominated by that one compile instead of nine.
+export DOCKER_BUILDKIT ?= 1
+export COMPOSE_BAKE ?= true
+
 COMPOSE = docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 
 # ── Production / self-host stack (published images) ───────────────────────────

@@ -149,7 +149,8 @@ services:
   api-server:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.api-server
+      dockerfile: Dockerfile.services
+      target: api-server
     image: karaxys/api-server:local
     container_name: karaxys-api-server
     restart: unless-stopped
@@ -178,7 +179,8 @@ services:
   ingestor:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.ingestor
+      dockerfile: Dockerfile.services
+      target: ingestor
     image: karaxys/ingestor:local
     container_name: karaxys-ingestor
     restart: unless-stopped
@@ -204,7 +206,8 @@ services:
   runtime-analyzer:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.runtime-analyzer
+      dockerfile: Dockerfile.services
+      target: runtime-analyzer
     image: karaxys/runtime-analyzer:local
     container_name: karaxys-runtime-analyzer
     restart: unless-stopped
@@ -229,7 +232,8 @@ services:
   dead-letter-consumer:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.dead-letter-consumer
+      dockerfile: Dockerfile.services
+      target: dead-letter-consumer
     image: karaxys/dead-letter-consumer:local
     container_name: karaxys-dead-letter-consumer
     restart: unless-stopped
@@ -252,7 +256,8 @@ services:
   agentic-gateway:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.agentic-gateway
+      dockerfile: Dockerfile.services
+      target: agentic-gateway
     image: karaxys/agentic-gateway:local
     container_name: karaxys-agentic-gateway
     restart: unless-stopped
@@ -278,7 +283,8 @@ services:
   agentic-processor:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.agentic-processor
+      dockerfile: Dockerfile.services
+      target: agentic-processor
     image: karaxys/agentic-processor:local
     container_name: karaxys-agentic-processor
     restart: unless-stopped
@@ -301,7 +307,8 @@ services:
   agentic-redteam-worker:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.agentic-redteam-worker
+      dockerfile: Dockerfile.services
+      target: agentic-redteam-worker
     image: karaxys/agentic-redteam-worker:local
     container_name: karaxys-agentic-redteam-worker
     restart: unless-stopped
@@ -324,7 +331,8 @@ services:
   scanner-worker:
     build:
       context: ${KARAXYS_BACKEND_CONTEXT:-../../../karaxys_backend}
-      dockerfile: Dockerfile.scanner-worker
+      dockerfile: Dockerfile.services
+      target: scanner-worker
     image: karaxys/scanner-worker:local
     container_name: karaxys-scanner-worker
     restart: unless-stopped
